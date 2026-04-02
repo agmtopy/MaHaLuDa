@@ -157,6 +157,9 @@ class MaHaLuDaApp:
                 return
 
             # 3. 显示预览窗口
+            logger.debug(f"show_preview: {self.config.ui.show_preview}")
+            logger.debug(f"confirm_before_upload: {self.config.ui.confirm_before_upload}")
+
             if self.config.ui.show_preview:
                 self._show_preview()
             else:
@@ -172,11 +175,20 @@ class MaHaLuDaApp:
 
     def _confirm_upload_if_needed(self) -> bool:
         """在无需预览时，按配置弹出上传确认框"""
+        logger.debug(f"_confirm_upload_if_needed called")
+
         if not self.app or not self.config:
-            return True
-        if not getattr(self.config.ui, "confirm_before_upload", True):
+            logger.warning("app or config is None, skipping confirmation")
             return True
 
+        confirm_before_upload = getattr(self.config.ui, "confirm_before_upload", True)
+        logger.debug(f"confirm_before_upload value: {confirm_before_upload}")
+
+        if not confirm_before_upload:
+            logger.info("confirm_before_upload is False, skipping confirmation dialog")
+            return True
+
+        logger.info("Showing confirmation dialog")
         result = QMessageBox.question(
             None,
             "确认上传",
@@ -184,7 +196,10 @@ class MaHaLuDaApp:
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.Yes,
         )
-        return result == QMessageBox.StandardButton.Yes
+
+        user_confirmed = result == QMessageBox.StandardButton.Yes
+        logger.info(f"User response: {'Yes' if user_confirmed else 'No'}")
+        return user_confirmed
 
     def _on_selection_cancelled(self):
         """选择取消回调"""

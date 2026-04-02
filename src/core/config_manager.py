@@ -49,6 +49,14 @@ class ImageConfig:
 
 
 @dataclass
+class HeadlessUIConfig:
+    """Headless 版本专用 UI 配置"""
+    confirm_after_capture: bool = True  # 截图后确认
+    confirm_before_upload: bool = True  # 上传前确认
+    use_native_dialog: bool = True  # 使用 Windows 原生对话框
+
+
+@dataclass
 class UIConfig:
     """界面配置"""
     show_preview: bool = True
@@ -60,6 +68,7 @@ class UIConfig:
     notification_duration: int = 3000
     minimize_to_tray: bool = True
     start_minimized: bool = False
+    headless: HeadlessUIConfig = field(default_factory=HeadlessUIConfig)
 
 
 @dataclass
@@ -289,6 +298,11 @@ class Config:
                 'notification_duration': self.ui.notification_duration,
                 'minimize_to_tray': self.ui.minimize_to_tray,
                 'start_minimized': self.ui.start_minimized,
+                'headless': {
+                    'confirm_after_capture': self.ui.headless.confirm_after_capture,
+                    'confirm_before_upload': self.ui.headless.confirm_before_upload,
+                    'use_native_dialog': self.ui.headless.use_native_dialog,
+                },
             },
             'logging': {
                 'level': self.logging.level,
@@ -350,6 +364,13 @@ class Config:
         # UI配置
         if 'ui' in data:
             ui_data = data['ui']
+            # 解析 headless 子配置
+            headless_data = ui_data.get('headless', {}) if isinstance(ui_data.get('headless'), dict) else {}
+            headless_config = HeadlessUIConfig(
+                confirm_after_capture=headless_data.get('confirm_after_capture', True),
+                confirm_before_upload=headless_data.get('confirm_before_upload', True),
+                use_native_dialog=headless_data.get('use_native_dialog', True),
+            )
             config.ui = UIConfig(
                 show_preview=ui_data.get('show_preview', True),
                 preview_max_width=ui_data.get('preview_max_width', 800),
@@ -360,6 +381,7 @@ class Config:
                 notification_duration=ui_data.get('notification_duration', 3000),
                 minimize_to_tray=ui_data.get('minimize_to_tray', True),
                 start_minimized=ui_data.get('start_minimized', False),
+                headless=headless_config,
             )
 
         # 日志配置

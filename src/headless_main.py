@@ -27,6 +27,7 @@ from src.core.hotkey_manager import HotkeyManager
 from src.utils.clipboard import copy_to_clipboard
 from src.utils.logger import setup_logger
 from src.utils.naming import ensure_unique_filename, generate_filename, get_full_path
+from src.utils.dialogs import confirm_yes_no, confirm_yes_no_cancel
 
 
 def _grab_clipboard_image(timeout_s: float, poll_interval_s: float = 0.2) -> Optional[Image.Image]:
@@ -189,6 +190,18 @@ class HeadlessMaHaLuDa:
                 logger.error("超时：未从剪贴板获取到截图（可能取消了截图或剪贴板被拦截）")
                 return
 
+            # 确认点1：截图后确认
+            if self.config.ui.headless.confirm_after_capture:
+                width, height = img.size
+                message = f"获取到截图\n尺寸: {width} x {height}\n\n是否继续保存？"
+                if not confirm_yes_no(
+                    title="MaHaLuDa - 确认截图",
+                    message=message,
+                    use_native=self.config.ui.headless.use_native_dialog,
+                ):
+                    logger.info("用户取消了截图保存")
+                    return
+
             filename = generate_filename(self.config.naming)
             file_path = get_full_path(self.config.git.repo_path, self.config.git.target_folder, filename)
             file_path = ensure_unique_filename(file_path)
@@ -196,6 +209,35 @@ class HeadlessMaHaLuDa:
             if not ImageProcessor.save_with_config(img, file_path, self.config.image):
                 logger.error("保存截图失败")
                 return
+
+            # 确认点2：上传前确认
+            if self.config.ui.headless.confirm_before_upload:
+                file_size = file_path.stat().st_size if file_path.exists() else 0
+                size_kb = file_size / 1024
+                message = (
+                    f"文件已保存\n"
+                    f"路径: {file_path.name}\n"
+                    f"大小: {size_kb:.1f} KB\n\n"
+                    f"点击'是'保存并上传到 Git\n"
+                    f"点击'否'仅本地保存\n"
+                    f"点击'取消'删除文件"
+                )
+                result = confirm_yes_no_cancel(
+                    title="MaHaLuDa - 确认上传",
+                    message=message,
+                    use_native=self.config.ui.headless.use_native_dialog,
+                )
+                if result is None:  # 取消
+                    try:
+                        file_path.unlink()
+                        logger.info(f"已删除文件: {file_path}")
+                    except Exception as e:
+                        logger.warning(f"删除文件失败: {e}")
+                    return
+                if result is False:  # 否 - 仅本地保存，不执行 Git 操作
+                    logger.info(f"文件已本地保存，跳过上传: {file_path}")
+                    return
+                # result is True - 继续执行 Git 操作
 
             git_ops = GitOperations(self.config.git.repo_path)
 
