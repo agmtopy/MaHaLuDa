@@ -1,0 +1,15 @@
+PyQt6>=6.6.0
+keyboard>=0.13.5
+mss>=9.0.0
+Pillow>=10.0.0
+pyperclip>=1.8.2
+PyYAML>=6.0
+loguru>=0.7.0
+pystray>=0.19.5
+pyinstaller>=6.0.0
+
+# 开发依赖
+pytest>=8.0.0
+pytest-qt>=4.3.0
+black>=24.0.0
+mypy>=1.8.0
