@@ -72,7 +72,8 @@
       "Bash(find:*)",
       "Bash(git -C /mnt/e/Project/MaHaLuDa log --all --source --full-history -- \"*config.yaml\" \"*.env\" \"*.pem\" \"*.key\" \"credentials*\")",
       "Bash(git -C /mnt/e/Project/MaHaLuDa log --all --oneline --author=\"\")",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(grep -E \"\\(get-pip|\\\\.exe$|\\\\.pyc$|__pycache__|\\\\.log$\\)\")"
     ]
   }
 }

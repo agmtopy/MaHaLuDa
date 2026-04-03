@@ -37,6 +37,8 @@ ENV/
 *.spec.bak
 *.manifest
 *.exe
+build/
+dist/
 
 # Logs
 logs/
@@ -58,3 +60,38 @@ dmypy.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*~
+
+# Third-party scripts
+get-pip.py
+
+# Documentation drafts
+.code_review_*.md
+
+# Sensitive files
+.env
+.env.*
+*.pem
+*.key
+*.cert
+*.crt
+credentials.json
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Compressed files (usually generated)
+*.zip
+*.tar.gz
+*.rar
+
+# Windows
+Desktop.ini
+ehthumbs.db
