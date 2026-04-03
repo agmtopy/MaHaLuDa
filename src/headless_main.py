@@ -28,9 +28,28 @@ from src.utils.clipboard import copy_to_clipboard
 from src.utils.logger import setup_logger
 from src.utils.naming import ensure_unique_filename, generate_filename, get_full_path
 from src.utils.dialogs import confirm_yes_no, confirm_yes_no_cancel
+from src.utils.file_utils import format_file_size, safe_delete
 
 
-def _grab_clipboard_image(timeout_s: float, poll_interval_s: float = 0.2) -> Optional[Image.Image]:
+# 常量定义
+CLIPBOARD_POLL_TIMEOUT_S = 30.0  # 等待用户完成截图的最大时间
+CLIPBOARD_POLL_INTERVAL_S = 0.2  # 剪贴板轮询间隔
+MAIN_LOOP_INTERVAL_S = 0.5  # 主循环休眠间隔
+SYSTEM_SCREENSHOT_HOTKEY = "windows+shift+s"  # Windows 系统截图快捷键
+SUPPORTED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"}
+COMMIT_MESSAGE_TEMPLATE = "Add screenshot: {filename}"
+
+# 托盘图标常量
+TRAY_ICON_SIZE = 64
+TRAY_ICON_CENTER = 32
+TRAY_ICON_LENS_RADIUS = 13  # 图标中"镜头"圆圈的半径
+TRAY_ICON_LENS_Y_START = 18
+TRAY_ICON_LENS_Y_END = 46
+TRAY_ICON_LENS_X_START = 18
+TRAY_ICON_LENS_X_END = 46
+
+
+def _grab_clipboard_image(timeout_s: float, poll_interval_s: float = CLIPBOARD_POLL_INTERVAL_S) -> Optional[Image.Image]:
     deadline = time.time() + timeout_s
     while time.time() < deadline:
         try:
@@ -47,7 +66,7 @@ def _grab_clipboard_image(timeout_s: float, poll_interval_s: float = 0.2) -> Opt
             for p in data:
                 try:
                     path = Path(p)
-                    if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"} and path.exists():
+                    if path.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS and path.exists():
                         return Image.open(path)
                 except Exception:
                     continue
@@ -59,13 +78,12 @@ def _grab_clipboard_image(timeout_s: float, poll_interval_s: float = 0.2) -> Opt
 
 def _build_tray_image() -> Image.Image:
     # 简单生成一个 64x64 图标（避免依赖额外资源文件）
-    img = Image.new("RGBA", (64, 64), (32, 32, 32, 255))
-    # 画一个浅色圆点作为“相机镜头”的感觉
-    for y in range(18, 46):
-        for x in range(18, 46):
-            dx = x - 32
-            dy = y - 32
-            if dx * dx + dy * dy <= 13 * 13:
+    img = Image.new(“RGBA”, (TRAY_ICON_SIZE, TRAY_ICON_SIZE), (32, 32, 32, 255))
+    for y in range(TRAY_ICON_LENS_Y_START, TRAY_ICON_LENS_Y_END):
+        for x in range(TRAY_ICON_LENS_X_START, TRAY_ICON_LENS_X_END):
+            dx = x - TRAY_ICON_CENTER
+            dy = y - TRAY_ICON_CENTER
+            if dx * dx + dy * dy <= TRAY_ICON_LENS_RADIUS * TRAY_ICON_LENS_RADIUS:
                 img.putpixel((x, y), (230, 230, 230, 255))
     return img
 
@@ -106,7 +124,7 @@ class HeadlessMaHaLuDa:
 
         try:
             while not self._stop_event.is_set():
-                time.sleep(0.5)
+                time.sleep(MAIN_LOOP_INTERVAL_S)
         except KeyboardInterrupt:
             logger.info("退出中...")
         finally:
@@ -139,7 +157,15 @@ class HeadlessMaHaLuDa:
         def _on_tray_open_config(_icon, _item):
             try:
                 config_path = Config.get_config_file()
-                os.startfile(str(config_path))  # type: ignore[attr-defined]
+                # 跨平台打开文件
+                if sys.platform == "win32":
+                    os.startfile(str(config_path))  # type: ignore[attr-defined]
+                elif sys.platform == "darwin":
+                    import subprocess
+                    subprocess.run(["open", str(config_path)])
+                else:
+                    import subprocess
+                    subprocess.run(["xdg-open", str(config_path)])
             except Exception as e:
                 logger.error(f"打开配置文件失败: {e}")
 
@@ -190,13 +216,13 @@ class HeadlessMaHaLuDa:
             try:
                 import keyboard
 
-                keyboard.send("windows+shift+s")
+                keyboard.send(SYSTEM_SCREENSHOT_HOTKEY)
             except Exception as e:
                 logger.error(f"无法触发系统截图快捷键: {e}")
                 return
 
             # 等待剪贴板出现图片
-            img = _grab_clipboard_image(timeout_s=30.0)
+            img = _grab_clipboard_image(timeout_s=CLIPBOARD_POLL_TIMEOUT_S)
             if img is None:
                 logger.error("超时：未从剪贴板获取到截图（可能取消了截图或剪贴板被拦截）")
                 return
@@ -224,11 +250,11 @@ class HeadlessMaHaLuDa:
             # 确认点2：上传前确认
             if self.config.ui.headless.confirm_before_upload:
                 file_size = file_path.stat().st_size if file_path.exists() else 0
-                size_kb = file_size / 1024
+                size_str = format_file_size(file_size)
                 message = (
                     f"文件已保存\n"
                     f"路径: {file_path.name}\n"
-                    f"大小: {size_kb:.1f} KB\n\n"
+                    f"大小: {size_str}\n\n"
                     f"点击'是'保存并上传到 Git\n"
                     f"点击'否'仅本地保存\n"
                     f"点击'取消'删除文件"
@@ -239,11 +265,7 @@ class HeadlessMaHaLuDa:
                     use_native=self.config.ui.headless.use_native_dialog,
                 )
                 if result is None:  # 取消
-                    try:
-                        file_path.unlink()
-                        logger.info(f"已删除文件: {file_path}")
-                    except Exception as e:
-                        logger.warning(f"删除文件失败: {e}")
+                    safe_delete(file_path)
                     return
                 if result is False:  # 否 - 仅本地保存，不执行 Git 操作
                     logger.info(f"文件已本地保存，跳过上传: {file_path}")
@@ -255,7 +277,7 @@ class HeadlessMaHaLuDa:
             if self.config.git.auto_pull:
                 git_ops.pull_from_remote(branch=self.config.git.branch)
 
-            commit_message = f"Add screenshot: {file_path.name}"
+            commit_message = COMMIT_MESSAGE_TEMPLATE.format(filename=file_path.name)
             if not git_ops.add_and_commit(file_path, commit_message):
                 logger.error("Git 提交失败")
                 return
