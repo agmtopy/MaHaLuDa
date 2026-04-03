@@ -30,6 +30,134 @@ from src.utils.naming import ensure_unique_filename, generate_filename, get_full
 from src.utils.dialogs import confirm_yes_no, confirm_yes_no_cancel
 
 
+class HeadlessMainWindow:
+    """Headless 版本的主窗口（使用 Tkinter）"""
+
+    def __init__(self, config: Config, on_screenshot: callable, on_quit: callable):
+        self.config = config
+        self.on_screenshot = on_screenshot
+        self.on_quit = on_quit
+        self.root = None
+        self._is_visible = False
+
+    def create(self):
+        """创建主窗口"""
+        import tkinter as tk
+        from tkinter import ttk
+
+        self.root = tk.Tk()
+        self.root.title("MaHaLuDa - 截图工具 (Headless)")
+        self.root.geometry("450x350")
+
+        # 设置窗口图标（如果有）
+        try:
+            # Windows 下可以设置任务栏图标
+            pass
+        except Exception:
+            pass
+
+        # 标题
+        title_frame = ttk.Frame(self.root, padding="10")
+        title_frame.pack(fill=tk.X)
+        title_label = ttk.Label(
+            title_frame,
+            text="MaHaLuDa",
+            font=("Microsoft YaHei", 16, "bold")
+        )
+        title_label.pack()
+
+        # 状态区域
+        status_frame = ttk.LabelFrame(self.root, text="状态", padding="10")
+        status_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        # 热键状态
+        hotkey_text = f"✓ {self.config.hotkey.key}" if self.config.hotkey.enabled else "✗ 未启用"
+        ttk.Label(status_frame, text=f"全局热键: {hotkey_text}").pack(anchor=tk.W)
+
+        # Git 状态
+        git_status = "✓ 已配置" if self.config.git.repo_path else "✗ 未配置"
+        ttk.Label(status_frame, text=f"Git仓库: {git_status}").pack(anchor=tk.W)
+
+        # GitHub 状态
+        github_status = f"✓ {self.config.github.username}/{self.config.github.repo_name}" if self.config.github.username else "✗ 未配置"
+        ttk.Label(status_frame, text=f"GitHub: {github_status}").pack(anchor=tk.W)
+
+        # 操作区域
+        action_frame = ttk.Frame(self.root, padding="10")
+        action_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 截图按钮
+        screenshot_btn = ttk.Button(
+            action_frame,
+            text="截图 (Ctrl+Shift+A)",
+            command=self._on_screenshot_click
+        )
+        screenshot_btn.pack(fill=tk.X, pady=5)
+
+        # 提示
+        tip_label = ttk.Label(
+            action_frame,
+            text="提示：关闭窗口将最小化到系统托盘\n使用托盘菜单可重新打开窗口或退出程序",
+            font=("Microsoft YaHei", 9),
+            foreground="gray"
+        )
+        tip_label.pack(pady=20)
+
+        # 处理关闭事件
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        self._is_visible = True
+
+    def show(self):
+        """显示窗口"""
+        if self.root:
+            self.root.deiconify()
+            self.root.lift()
+            self.root.focus_force()
+            self._is_visible = True
+
+    def hide(self):
+        """隐藏窗口"""
+        if self.root:
+            self.root.withdraw()
+            self._is_visible = False
+
+    def toggle(self):
+        """切换显示/隐藏"""
+        if self._is_visible:
+            self.hide()
+        else:
+            self.show()
+
+    def _on_screenshot_click(self):
+        """截图按钮点击"""
+        if self.on_screenshot:
+            threading.Thread(target=self.on_screenshot, daemon=True).start()
+
+    def _on_close(self):
+        """关闭按钮点击 - 最小化到托盘"""
+        if self.config.ui.minimize_to_tray:
+            self.hide()
+            logger.info("主窗口已最小化到托盘")
+        else:
+            self._quit()
+
+    def _quit(self):
+        """退出程序"""
+        if self.on_quit:
+            self.on_quit()
+
+    def run(self):
+        """运行主循环"""
+        if self.root:
+            self.root.mainloop()
+
+    def stop(self):
+        """停止主循环"""
+        if self.root:
+            self.root.quit()
+
+
 def _grab_clipboard_image(timeout_s: float, poll_interval_s: float = 0.2) -> Optional[Image.Image]:
     deadline = time.time() + timeout_s
     while time.time() < deadline:
@@ -87,6 +215,7 @@ class HeadlessMaHaLuDa:
         self._run_lock = threading.Lock()
         self._stop_event = threading.Event()
         self._tray_icon = None
+        self.main_window: Optional[HeadlessMainWindow] = None
 
     def start(self) -> int:
         valid, errors = self.config.validate()
@@ -100,18 +229,58 @@ class HeadlessMaHaLuDa:
                 logger.error("热键注册失败（可能需要管理员权限）")
                 return 3
 
+        # 创建主窗口（如果配置启用）
+        if getattr(self.config.ui, 'show_main_window_on_start', True):
+            self._create_main_window()
+
         self._maybe_start_tray()
 
         logger.info("MaHaLuDa 无GUI版已启动。按热键触发系统截图。按 Ctrl+C 或托盘菜单退出。")
-        try:
-            while not self._stop_event.is_set():
-                time.sleep(0.5)
-        except KeyboardInterrupt:
-            logger.info("退出中...")
-        finally:
-            self.hotkey.stop()
-            self._stop_tray()
+
+        # 运行主循环
+        if self.main_window and self.main_window.root:
+            # 有主窗口时，运行 Tkinter 主循环
+            try:
+                self.main_window.run()
+            except KeyboardInterrupt:
+                logger.info("退出中...")
+            finally:
+                self._cleanup()
+        else:
+            # 无主窗口时，使用简单的循环等待
+            try:
+                while not self._stop_event.is_set():
+                    time.sleep(0.5)
+            except KeyboardInterrupt:
+                logger.info("退出中...")
+            finally:
+                self._cleanup()
         return 0
+
+    def _create_main_window(self):
+        """创建主窗口"""
+        try:
+            self.main_window = HeadlessMainWindow(
+                config=self.config,
+                on_screenshot=self.on_hotkey,
+                on_quit=self._quit
+            )
+            self.main_window.create()
+            logger.info("主窗口已创建")
+        except Exception as e:
+            logger.error(f"创建主窗口失败: {e}")
+            self.main_window = None
+
+    def _quit(self):
+        """退出程序"""
+        self._stop_event.set()
+        if self.main_window:
+            self.main_window.stop()
+
+    def _cleanup(self):
+        """清理资源"""
+        self.hotkey.stop()
+        self._stop_tray()
 
     def _maybe_start_tray(self) -> None:
         if not self.config.ui.minimize_to_tray:
@@ -124,12 +293,15 @@ class HeadlessMaHaLuDa:
             return
 
         def _on_tray_screenshot(_icon, _item):
-            # 与热键一致：触发同一套流程
             threading.Thread(target=self.on_hotkey, daemon=True).start()
+
+        def _on_tray_show_window(_icon, _item):
+            """显示/隐藏主窗口"""
+            if self.main_window:
+                self.main_window.toggle()
 
         def _on_tray_open_config(_icon, _item):
             try:
-                # headless_main 允许 --config 指定路径；这里优先打开标准配置位置
                 config_path = Config.get_config_file()
                 os.startfile(str(config_path))  # type: ignore[attr-defined]
             except Exception as e:
@@ -137,18 +309,25 @@ class HeadlessMaHaLuDa:
 
         def _on_tray_quit(icon, _item):
             self._stop_event.set()
+            if self.main_window:
+                self.main_window.stop()
             try:
                 icon.stop()
             except Exception:
                 pass
 
-        menu = pystray.Menu(
+        # 构建菜单
+        menu_items = [
+            pystray.MenuItem("显示主窗口", _on_tray_show_window, default=True),
+            pystray.Menu.SEPARATOR,
             pystray.MenuItem("截图", _on_tray_screenshot),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("打开配置", _on_tray_open_config),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("退出", _on_tray_quit),
-        )
+        ]
+
+        menu = pystray.Menu(*menu_items)
 
         try:
             self._tray_icon = pystray.Icon("MaHaLuDa", _build_tray_image(), "MaHaLuDa", menu)

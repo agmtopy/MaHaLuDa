@@ -62,6 +62,15 @@ class GitOperations:
         cmd = ['git'] + args
         logger.debug(f"执行git命令: {' '.join(cmd)}")
 
+        # Windows下隐藏控制台窗口
+        startupinfo = None
+        creationflags = 0
+        if os.name == 'nt':  # Windows
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            creationflags = subprocess.CREATE_NO_WINDOW
+
         def _run_once() -> subprocess.CompletedProcess:
             return subprocess.run(
                 cmd,
@@ -69,6 +78,8 @@ class GitOperations:
                 capture_output=True,
                 text=True,
                 check=False,
+                startupinfo=startupinfo,
+                creationflags=creationflags,
                 env={
                     **os.environ,
                     # 避免 git 在某些场景弹出凭据/编辑器导致卡死

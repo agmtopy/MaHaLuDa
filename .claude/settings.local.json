@@ -65,7 +65,8 @@
       "Bash(python:*)",
       "Bash(python3:*)",
       "Bash(cat:*)",
-      "Bash(find /mnt/c/Users/*/AppData/Local/MaHaLuDa/config.yaml)"
+      "Bash(find /mnt/c/Users/*/AppData/Local/MaHaLuDa/config.yaml)",
+      "Bash(ls:*)"
     ]
   }
 }

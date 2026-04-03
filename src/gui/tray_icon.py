@@ -16,6 +16,7 @@ class TrayIcon(QObject):
     screenshot_requested = pyqtSignal()  # 请求截图
     settings_requested = pyqtSignal()  # 请求打开设置
     quit_requested = pyqtSignal()  # 请求退出
+    toggle_window_requested = pyqtSignal()  # 请求切换主窗口显示/隐藏
 
     def __init__(self, config: Config, icon_path: Optional[str] = None):
         """
@@ -73,15 +74,23 @@ class TrayIcon(QObject):
     def _on_activated(self, reason: QSystemTrayIcon.ActivationReason):
         """托盘图标点击回调"""
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            # 单击：默认发起截图（符合大多数截图工具习惯）
-            self._on_screenshot()
+            # 单击：切换主窗口显示/隐藏
+            self.toggle_window_requested.emit()
         elif reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            # 双击：打开设置
-            self._on_settings()
+            # 双击：发起截图
+            self._on_screenshot()
 
     def _create_tray_menu(self):
         """创建系统托盘菜单"""
         self.tray_menu = QMenu()
+
+        # 显示主窗口动作
+        show_window_action = QAction("显示主窗口", self.tray_menu)
+        show_window_action.triggered.connect(self._on_show_window)
+        self.tray_menu.addAction(show_window_action)
+
+        # 分隔符
+        self.tray_menu.addSeparator()
 
         # 截图动作
         screenshot_action = QAction("截图", self.tray_menu)
@@ -116,6 +125,11 @@ class TrayIcon(QObject):
         """设置菜单项点击"""
         logger.debug("托盘菜单: 设置")
         self.settings_requested.emit()
+
+    def _on_show_window(self):
+        """显示主窗口菜单项点击"""
+        logger.debug("托盘菜单: 显示主窗口")
+        self.toggle_window_requested.emit()
 
     def _on_quit(self):
         """退出菜单项点击"""

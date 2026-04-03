@@ -17,13 +17,14 @@ def setup_logger(log_dir: Path, log_level: str = "INFO", rotation: str = "10 MB"
     # 移除默认处理器
     logger.remove()
 
-    # 添加控制台输出（彩色）
-    logger.add(
-        sys.stdout,
-        level=log_level,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-        colorize=True
-    )
+    # 添加控制台输出（彩色）- 仅在有控制台时添加
+    if sys.stdout is not None:
+        logger.add(
+            sys.stdout,
+            level=log_level,
+            format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+            colorize=True
+        )
 
     # 添加文件输出
     log_dir.mkdir(parents=True, exist_ok=True)

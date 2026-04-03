@@ -267,9 +267,14 @@ class SettingsDialog(QDialog):
         layout.addRow("通知持续时间:", self.notification_duration_spin)
 
         # 最小化到托盘
-        self.minimize_to_tray_check = QCheckBox("最小化到系统托盘")
+        self.minimize_to_tray_check = QCheckBox("关闭主窗口时最小化到托盘")
         self.minimize_to_tray_check.setChecked(self.config.ui.minimize_to_tray)
         layout.addRow(self.minimize_to_tray_check)
+
+        # 启动时显示主窗口
+        self.show_main_window_on_start_check = QCheckBox("启动时显示主窗口")
+        self.show_main_window_on_start_check.setChecked(getattr(self.config.ui, "show_main_window_on_start", True))
+        layout.addRow(self.show_main_window_on_start_check)
 
         # 启动时最小化
         self.start_minimized_check = QCheckBox("启动时最小化")
@@ -360,6 +365,7 @@ class SettingsDialog(QDialog):
         new_config.ui.notification_duration = self.notification_duration_spin.value()
         new_config.ui.minimize_to_tray = self.minimize_to_tray_check.isChecked()
         new_config.ui.start_minimized = self.start_minimized_check.isChecked()
+        new_config.ui.show_main_window_on_start = self.show_main_window_on_start_check.isChecked()
 
         return new_config
 
@@ -400,6 +406,7 @@ class SettingsDialog(QDialog):
         target.ui.notification_duration = source.ui.notification_duration
         target.ui.minimize_to_tray = source.ui.minimize_to_tray
         target.ui.start_minimized = source.ui.start_minimized
+        target.ui.show_main_window_on_start = getattr(source.ui, "show_main_window_on_start", True)
 
     def _apply_settings(self):
         """应用设置"""
@@ -474,3 +481,4 @@ class SettingsDialog(QDialog):
         self.config.ui.notification_duration = original.ui.notification_duration
         self.config.ui.minimize_to_tray = original.ui.minimize_to_tray
         self.config.ui.start_minimized = original.ui.start_minimized
+        self.config.ui.show_main_window_on_start = getattr(original.ui, "show_main_window_on_start", True)

@@ -17,6 +17,7 @@ from src.gui.overlay_window import OverlayWindow
 from src.gui.preview_window import PreviewWindow
 from src.gui.tray_icon import TrayIcon
 from src.gui.settings_dialog import SettingsDialog
+from src.gui.main_window import MainWindow
 from src.utils.logger import setup_logger
 from src.utils.clipboard import copy_to_clipboard
 from src.utils.naming import generate_filename, get_full_path, ensure_unique_filename
@@ -32,6 +33,7 @@ class MaHaLuDaApp:
         self.config: Optional[Config] = None
         self.hotkey_manager: Optional[HotkeyManager] = None
         self.tray_icon: Optional[TrayIcon] = None
+        self.main_window: Optional[MainWindow] = None
         self.overlay_window: Optional[OverlayWindow] = None
         self.preview_window: Optional[PreviewWindow] = None
         self.captured_image: Optional[Image.Image] = None
@@ -109,9 +111,24 @@ class MaHaLuDaApp:
                 self.tray_icon.screenshot_requested.connect(self._on_hotkey_pressed)
                 self.tray_icon.settings_requested.connect(self._on_settings_requested)
                 self.tray_icon.quit_requested.connect(self._on_quit_requested)
+                self.tray_icon.toggle_window_requested.connect(self._on_toggle_window_requested)
                 self.tray_icon.show()
             else:
                 logger.warning("系统托盘不可用：将不显示托盘图标")
+
+            # 初始化主窗口
+            logger.info("初始化主窗口...")
+            self.main_window = MainWindow(self.config, parent=self)
+            self.main_window.screenshot_requested.connect(self._on_hotkey_pressed)
+            self.main_window.settings_requested.connect(self._on_settings_requested)
+            self.main_window.quit_requested.connect(self._on_quit_requested)
+
+            # 根据配置决定是否显示主窗口
+            if self.config.ui.show_main_window_on_start:
+                self.main_window.show()
+                logger.info("主窗口已显示")
+            else:
+                logger.info("主窗口将在后台运行（根据配置）")
 
             logger.info("应用程序初始化完成")
             return True
@@ -319,6 +336,10 @@ class MaHaLuDaApp:
                     f"链接已复制到剪贴板\n{github_url}"
                 )
 
+            # 添加到历史记录
+            if self.main_window:
+                self.main_window.add_screenshot_history(file_path.name, github_url)
+
             # 清理
             self.captured_image = None
 
@@ -343,6 +364,11 @@ class MaHaLuDaApp:
 
         except Exception as e:
             logger.error(f"打开设置对话框时发生错误: {e}")
+
+    def _on_toggle_window_requested(self):
+        """切换主窗口显示/隐藏请求回调"""
+        if self.main_window:
+            self.main_window.toggle_visibility()
 
     def _on_quit_requested(self):
         """退出请求回调"""
@@ -382,6 +408,9 @@ class MaHaLuDaApp:
                 self.tray_icon.cleanup()
 
             # 清理窗口
+            if self.main_window:
+                self.main_window.close()
+
             if self.overlay_window:
                 self.overlay_window.close()
 

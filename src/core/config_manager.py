@@ -66,8 +66,9 @@ class UIConfig:
     auto_copy: bool = True
     show_notification: bool = True
     notification_duration: int = 3000
-    minimize_to_tray: bool = True
+    minimize_to_tray: bool = True  # 关闭主窗口时最小化到托盘
     start_minimized: bool = False
+    show_main_window_on_start: bool = True  # 启动时显示主窗口
     headless: HeadlessUIConfig = field(default_factory=HeadlessUIConfig)
 
 
@@ -298,6 +299,7 @@ class Config:
                 'notification_duration': self.ui.notification_duration,
                 'minimize_to_tray': self.ui.minimize_to_tray,
                 'start_minimized': self.ui.start_minimized,
+                'show_main_window_on_start': self.ui.show_main_window_on_start,
                 'headless': {
                     'confirm_after_capture': self.ui.headless.confirm_after_capture,
                     'confirm_before_upload': self.ui.headless.confirm_before_upload,
@@ -381,6 +383,7 @@ class Config:
                 notification_duration=ui_data.get('notification_duration', 3000),
                 minimize_to_tray=ui_data.get('minimize_to_tray', True),
                 start_minimized=ui_data.get('start_minimized', False),
+                show_main_window_on_start=ui_data.get('show_main_window_on_start', True),
                 headless=headless_config,
             )
 
