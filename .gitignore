@@ -33,6 +33,10 @@ ENV/
 *.swo
 *~
 
+# Claude Code
+.claude/
+CLAUDE.md
+
 # PyInstaller
 *.spec.bak
 *.manifest
