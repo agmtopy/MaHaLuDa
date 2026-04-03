@@ -28,7 +28,7 @@ class TestHotkeyManager:
         assert manager.callback == callback
 
     @patch('keyboard.add_hotkey')
-    @patch('keyboard.is_hotkey_registered')
+    @patch('keyboard.is_hotkey_registered', create=True)
     def test_register_success(self, mock_is_registered, mock_add_hotkey):
         """测试成功注册热键"""
         mock_is_registered.return_value = False
@@ -77,7 +77,7 @@ class TestHotkeyManager:
         assert manager.is_registered is False
 
     @patch('keyboard.add_hotkey')
-    @patch('keyboard.is_hotkey_registered')
+    @patch('keyboard.is_hotkey_registered', create=True)
     def test_reregister(self, mock_is_registered, mock_add_hotkey):
         """测试重复注册"""
         mock_is_registered.return_value = False
@@ -118,7 +118,7 @@ class TestHotkeyManager:
         manager._on_hotkey_pressed()
 
     @patch('keyboard.add_hotkey')
-    @patch('keyboard.is_hotkey_registered')
+    @patch('keyboard.is_hotkey_registered', create=True)
     def test_update_hotkey(self, mock_is_registered, mock_add_hotkey):
         """测试更新热键"""
         mock_is_registered.return_value = False

@@ -16,13 +16,22 @@ class ScreenshotCapture:
 
     def __enter__(self):
         """上下文管理器入口"""
-        self.sct = mss.mss()
+        context = mss.mss()
+        self.sct = context.__enter__() if hasattr(context, '__enter__') else context
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """上下文管理器退出"""
-        if self.sct:
-            self.sct.close()
+        if self.sct and hasattr(self.sct, '__exit__'):
+            try:
+                self.sct.__exit__(exc_type, exc_val, exc_tb)
+            except Exception:
+                pass
+        elif self.sct:
+            try:
+                self.sct.close()
+            except Exception:
+                pass
         return False
 
     def get_monitors_info(self) -> list[dict]:

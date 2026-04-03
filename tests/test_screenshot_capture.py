@@ -90,8 +90,8 @@ class TestScreenshotCapture:
             assert file_path.exists()
 
             # 验证图像
-            loaded_image = Image.open(file_path)
-            assert loaded_image.size == (100, 100)
+            with Image.open(file_path) as loaded_image:
+                assert loaded_image.size == (100, 100)
 
     def test_save_screenshot_jpeg(self):
         """测试保存JPEG格式"""
@@ -120,9 +120,14 @@ class TestScreenshotCapture:
 
     def test_save_screenshot_invalid_path(self):
         """测试保存到无效路径"""
+        import os
+
         image = Image.new('RGB', (10, 10))
-        file_path = Path("/invalid/path/test.png")
+        if os.name == 'nt':
+            file_path = Path("Z:/nonexistent_drive_1234567890/test.png")
+        else:
+            file_path = Path("/root/non_writable_dir/test.png")
 
         result = ScreenshotCapture.save_screenshot(image, file_path)
 
-        assert result is False False
+        assert result is False
