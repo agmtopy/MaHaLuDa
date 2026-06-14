@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 import time
@@ -16,6 +17,7 @@ import threading
 from pathlib import Path
 from typing import Optional
 
+import keyboard
 from loguru import logger
 from PIL import Image, ImageGrab
 
@@ -51,11 +53,17 @@ TRAY_ICON_LENS_X_END = 46
 
 def _grab_clipboard_image(timeout_s: float, poll_interval_s: float = CLIPBOARD_POLL_INTERVAL_S) -> Optional[Image.Image]:
     deadline = time.time() + timeout_s
+    consecutive_failures = 0
     while time.time() < deadline:
         try:
             data = ImageGrab.grabclipboard()
+            consecutive_failures = 0
         except Exception as e:
-            logger.debug(f"读取剪贴板失败（将重试）: {e}")
+            consecutive_failures += 1
+            if consecutive_failures >= 5:
+                logger.warning(f"剪贴板连续 {consecutive_failures} 次读取失败: {e}")
+            else:
+                logger.debug(f"读取剪贴板失败（将重试）: {e}")
             data = None
 
         if isinstance(data, Image.Image):
@@ -67,7 +75,9 @@ def _grab_clipboard_image(timeout_s: float, poll_interval_s: float = CLIPBOARD_P
                 try:
                     path = Path(p)
                     if path.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS and path.exists():
-                        return Image.open(path)
+                        img = Image.open(path)
+                        img.load()  # 确保数据读入内存，释放文件句柄
+                        return img
                 except Exception:
                     continue
 
@@ -78,7 +88,7 @@ def _grab_clipboard_image(timeout_s: float, poll_interval_s: float = CLIPBOARD_P
 
 def _build_tray_image() -> Image.Image:
     # 简单生成一个 64x64 图标（避免依赖额外资源文件）
-    img = Image.new(“RGBA”, (TRAY_ICON_SIZE, TRAY_ICON_SIZE), (32, 32, 32, 255))
+    img = Image.new("RGBA", (TRAY_ICON_SIZE, TRAY_ICON_SIZE), (32, 32, 32, 255))
     for y in range(TRAY_ICON_LENS_Y_START, TRAY_ICON_LENS_Y_END):
         for x in range(TRAY_ICON_LENS_X_START, TRAY_ICON_LENS_X_END):
             dx = x - TRAY_ICON_CENTER
@@ -140,6 +150,11 @@ class HeadlessMaHaLuDa:
         """清理资源"""
         self.hotkey.stop()
         self._stop_tray()
+        # 等待正在进行的截图操作完成
+        if self._run_lock.locked():
+            logger.info("等待正在进行的截图操作完成...")
+            self._run_lock.acquire()
+            self._run_lock.release()
 
     def _maybe_start_tray(self) -> None:
         if not self.config.ui.minimize_to_tray:
@@ -214,8 +229,6 @@ class HeadlessMaHaLuDa:
             # 触发系统截图 UI（等同 Win+Shift+S）
             logger.info("触发系统截图（Win+Shift+S），请完成选区…")
             try:
-                import keyboard
-
                 keyboard.send(SYSTEM_SCREENSHOT_HOTKEY)
             except Exception as e:
                 logger.error(f"无法触发系统截图快捷键: {e}")
@@ -227,84 +240,86 @@ class HeadlessMaHaLuDa:
                 logger.error("超时：未从剪贴板获取到截图（可能取消了截图或剪贴板被拦截）")
                 return
 
-            # 确认点1：截图后确认
-            if self.config.ui.headless.confirm_after_capture:
-                width, height = img.size
-                message = f"获取到截图\n尺寸: {width} x {height}\n\n是否继续保存？"
-                if not confirm_yes_no(
-                    title="MaHaLuDa - 确认截图",
-                    message=message,
-                    use_native=self.config.ui.headless.use_native_dialog,
-                ):
-                    logger.info("用户取消了截图保存")
+            try:
+                # 确认点1：截图后确认
+                if self.config.ui.headless.confirm_after_capture:
+                    width, height = img.size
+                    message = f"获取到截图\n尺寸: {width} x {height}\n\n是否继续保存？"
+                    if not confirm_yes_no(
+                        title="MaHaLuDa - 确认截图",
+                        message=message,
+                        use_native=self.config.ui.headless.use_native_dialog,
+                    ):
+                        logger.info("用户取消了截图保存")
+                        return
+
+                filename = generate_filename(self.config.naming)
+                file_path = get_full_path(self.config.git.repo_path, self.config.git.target_folder, filename)
+                file_path = ensure_unique_filename(file_path)
+
+                if not ImageProcessor.save_with_config(img, file_path, self.config.image):
+                    logger.error("保存截图失败")
                     return
 
-            filename = generate_filename(self.config.naming)
-            file_path = get_full_path(self.config.git.repo_path, self.config.git.target_folder, filename)
-            file_path = ensure_unique_filename(file_path)
+                # 确认点2：上传前确认
+                if self.config.ui.headless.confirm_before_upload:
+                    file_size = file_path.stat().st_size if file_path.exists() else 0
+                    size_str = format_file_size(file_size)
+                    message = (
+                        f"文件已保存\n"
+                        f"路径: {file_path.name}\n"
+                        f"大小: {size_str}\n\n"
+                        f"点击'是'保存并上传到 Git\n"
+                        f"点击'否'仅本地保存\n"
+                        f"点击'取消'删除文件"
+                    )
+                    result = confirm_yes_no_cancel(
+                        title="MaHaLuDa - 确认上传",
+                        message=message,
+                        use_native=self.config.ui.headless.use_native_dialog,
+                    )
+                    if result is None:  # 取消
+                        safe_delete(file_path)
+                        return
+                    if result is False:  # 否 - 仅本地保存，不执行 Git 操作
+                        logger.info(f"文件已本地保存，跳过上传: {file_path}")
+                        return
+                    # result is True - 继续执行 Git 操作
 
-            if not ImageProcessor.save_with_config(img, file_path, self.config.image):
-                logger.error("保存截图失败")
-                return
+                git_ops = GitOperations(self.config.git.repo_path)
 
-            # 确认点2：上传前确认
-            if self.config.ui.headless.confirm_before_upload:
-                file_size = file_path.stat().st_size if file_path.exists() else 0
-                size_str = format_file_size(file_size)
-                message = (
-                    f"文件已保存\n"
-                    f"路径: {file_path.name}\n"
-                    f"大小: {size_str}\n\n"
-                    f"点击'是'保存并上传到 Git\n"
-                    f"点击'否'仅本地保存\n"
-                    f"点击'取消'删除文件"
-                )
-                result = confirm_yes_no_cancel(
-                    title="MaHaLuDa - 确认上传",
-                    message=message,
-                    use_native=self.config.ui.headless.use_native_dialog,
-                )
-                if result is None:  # 取消
-                    safe_delete(file_path)
+                if self.config.git.auto_pull:
+                    git_ops.pull_from_remote(branch=self.config.git.branch)
+
+                commit_message = COMMIT_MESSAGE_TEMPLATE.format(filename=file_path.name)
+                if not git_ops.add_and_commit(file_path, commit_message):
+                    logger.error("Git 提交失败")
                     return
-                if result is False:  # 否 - 仅本地保存，不执行 Git 操作
-                    logger.info(f"文件已本地保存，跳过上传: {file_path}")
+
+                if not git_ops.push_to_remote(branch=self.config.git.branch):
+                    logger.error("Git 推送失败")
                     return
-                # result is True - 继续执行 Git 操作
 
-            git_ops = GitOperations(self.config.git.repo_path)
+                link_gen = LinkGenerator(self.config.github)
+                relative_path = f"{self.config.git.target_folder}/{file_path.name}"
+                url = link_gen.generate_raw_url(relative_path, branch=self.config.git.branch)
 
-            if self.config.git.auto_pull:
-                git_ops.pull_from_remote(branch=self.config.git.branch)
+                if self.config.ui.auto_copy:
+                    copy_to_clipboard(url)
 
-            commit_message = COMMIT_MESSAGE_TEMPLATE.format(filename=file_path.name)
-            if not git_ops.add_and_commit(file_path, commit_message):
-                logger.error("Git 提交失败")
-                return
-
-            if not git_ops.push_to_remote(branch=self.config.git.branch):
-                logger.error("Git 推送失败")
-                return
-
-            link_gen = LinkGenerator(self.config.github)
-            relative_path = f"{self.config.git.target_folder}/{file_path.name}"
-            url = link_gen.generate_raw_url(relative_path, branch=self.config.git.branch)
-
-            if self.config.ui.auto_copy:
-                copy_to_clipboard(url)
-
-            logger.info(f"完成：{url}")
+                logger.info(f"完成：{url}")
+            finally:
+                img.close()
 
         finally:
             self._run_lock.release()
 
 
 def main() -> int:
-    config_path: Optional[Path] = None
-    argv = sys.argv[1:]
-    if len(argv) >= 2 and argv[0] in {"--config", "-c"}:
-        config_path = Path(argv[1]).expanduser()
-    return HeadlessMaHaLuDa(config_path=config_path).start()
+    parser = argparse.ArgumentParser(description="MaHaLuDa 无GUI截图工具")
+    parser.add_argument("--config", "-c", type=Path, help="配置文件路径")
+    args = parser.parse_args()
+    return HeadlessMaHaLuDa(config_path=args.config).start()
 
 
 if __name__ == "__main__":

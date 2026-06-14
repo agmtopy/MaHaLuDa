@@ -45,7 +45,15 @@ python src\main.py
 
 ### 使用打包版本
 
-直接下载发布页面的 `MaHaLuDa.exe` 可执行文件，以管理员身份运行。
+1. 从 `dist/MaHaLuDa/` 目录获取打包好的文件：
+   - `MaHaLuDa.exe` — 主程序
+   - `_internal/` — 依赖文件（必须和 exe 放在同一目录）
+
+2. **右键 `MaHaLuDa.exe` → 以管理员身份运行**
+
+3. 程序启动后不会弹出窗口，只在**系统托盘**（任务栏右下角）显示一个相机图标
+
+> ⚠️ **必须以管理员身份运行**，否则全局热键 `Ctrl+Shift+A` 无法注册。
 
 ## 配置
 
@@ -69,59 +77,88 @@ github:
 ```yaml
 hotkey:
   key: "ctrl+shift+a"     # 全局热键（默认: Ctrl+Shift+A）
+  enabled: true            # 是否启用热键（默认: true）
 
 git:
   auto_pull: false        # 推送前是否自动拉取（默认: false）
 
 naming:
   format: "%Y-%m-%d_%H-%M-%S"  # 文件名时间格式
+  prefix: ""              # 文件名前缀
+  suffix: ""              # 文件名后缀
+  extension: ".png"       # 文件扩展名
 
 image:
-  format: "png"           # 图片格式（png/jpg）
-  quality: 95             # 图片质量（jpg格式时有效）
+  format: "PNG"           # 图片格式（PNG/JPG）
+  quality: 95             # 图片质量（JPG格式时有效）
+  optimize: true          # 是否优化图片大小
 
 ui:
-  show_preview: false     # 是否显示预览窗口（默认: false，无GUI版本不支持）
-  confirm_before_upload: true  # 上传前确认（默认: true）
+  confirm_before_upload: true   # 上传前弹窗确认（默认: true）
+  auto_copy: true               # 自动复制链接到剪贴板（默认: true）
+  show_notification: true       # 显示桌面通知（默认: true）
+  minimize_to_tray: true        # 关闭时最小化到托盘（默认: true）
+  headless:
+    confirm_after_capture: false   # 截图后是否确认（默认: false）
+    confirm_before_upload: true    # 上传前确认对话框（默认: true）
+    use_native_dialog: true        # 使用 Windows 原生对话框（默认: true）
 
 logging:
-  level: "INFO"           # 日志级别
+  level: "INFO"           # 日志级别（DEBUG/INFO/WARNING/ERROR）
   rotation: "10 MB"       # 日志轮转大小
   retention: "7 days"     # 日志保留时间
 ```
 
 ## 使用方法
 
-### 基本工作流程
+### 快速开始
 
-1. **启动程序**（需要管理员权限）
-   - 程序启动后会在系统托盘显示图标
-   - 托盘图标提供右键菜单
+1. **以管理员身份运行** `MaHaLuDa.exe`
+2. 任务栏右下角出现托盘图标（相机形状）
+3. 按 `Ctrl+Shift+A` 触发截图
+4. 在弹出的系统截图工具中选择区域
+5. 程序自动上传并复制 GitHub Raw 链接到剪贴板
+6. 直接 `Ctrl+V` 粘贴链接使用
 
-2. **触发截图**
-   - 按 `Ctrl+Shift+A` 触发截图
-   - 或右键托盘图标 → "截图"
+### 详细工作流程
 
-3. **选择区域**
-   - 系统截图工具自动启动（Win+Shift+S）
-   - 选择截图区域、窗口或全屏
+```
+按 Ctrl+Shift+A
+       ↓
+Windows 系统截图工具启动（Win+Shift+S）
+       ↓
+鼠标选择截图区域
+       ↓
+程序自动检测剪贴板中的截图
+       ↓
+保存到本地 Git 仓库
+       ↓
+git add → git commit → git push
+       ↓
+生成 GitHub Raw URL → 复制到剪贴板
+```
 
-4. **自动处理**
-   - 程序自动检测剪贴板中的截图
-   - 保存到配置的Git仓库
-   - 自动执行 `git add`、`git commit`、`git push`
-   - 生成GitHub Raw URL并复制到剪贴板
+### 托盘菜单（右键托盘图标）
 
-5. **获取链接**
-   - 链接已自动复制到剪贴板
-   - 直接粘贴使用（Ctrl+V）
+| 菜单项 | 功能 |
+|--------|------|
+| **截图** | 手动触发截图（等同按快捷键） |
+| **打开配置** | 用系统编辑器打开 config.yaml |
+| **退出** | 退出程序 |
 
-### 托盘菜单功能
+### 命令行参数
 
-- **截图**: 手动触发截图
-- **打开配置目录**: 打开配置文件所在目录
-- **查看日志**: 打开日志文件
-- **退出**: 退出程序
+```bash
+MaHaLuDa.exe                    # 默认启动
+MaHaLuDa.exe --config path.yaml # 指定配置文件
+MaHaLuDa.exe --help             # 查看帮助
+```
+
+### 日志查看
+
+程序运行日志保存在：
+- **Windows**: `%LOCALAPPDATA%\MaHaLuDa\logs\mahaluda.log`
+- **WSL/Linux**: `~/.mahaluda/logs/mahaluda.log`
 
 ## 工作原理
 
@@ -134,58 +171,53 @@ logging:
 
 ## 故障排除
 
-### 热键无响应
+### 托盘图标不显示
 
-**原因**: `keyboard` 库需要管理员权限
+**原因**: 程序启动失败或依赖缺失
+
+**排查步骤**:
+1. 查看日志文件（路径见上方"日志查看"）
+2. 检查是否有 `No module named 'pystray'` 错误
+3. 确保以管理员身份运行
+
+### 热键 Ctrl+Shift+A 无响应
+
+**原因**: `keyboard` 库需要管理员权限才能注册全局热键
 
 **解决方案**:
-- 以管理员身份运行程序
-- 或使用托盘菜单手动触发截图
+- **必须**以管理员身份运行程序
+- 或使用托盘右键菜单 → "截图" 手动触发
 
-### WSL 环境问题
-
-**原因**: WSL 中 `keyboard` 库无法监听 Windows 全局热键
-
-**解决方案**:
-- 在 Windows 原生环境中运行程序
-- 参考 `diagnose.py` 诊断脚本
-
-### 剪贴板检测失败
+### 剪贴板检测失败（超时30秒）
 
 **可能原因**:
-- 截图时间过长（超过30秒）
-- 其他程序占用剪贴板
+- 截图后超过30秒才完成选择
+- 其他剪贴板管理工具拦截了截图数据
+- Windows 系统截图工具未正常工作
 
 **解决方案**:
-- 截图后尽快完成选择
-- 检查是否有剪贴板管理工具冲突
+- 截图后尽快完成区域选择
+- 关闭剪贴板管理工具（如 Ditto、ClipboardFusion）后重试
+- 手动按 `Win+Shift+S` 测试系统截图是否正常
 
-### Git 操作失败
+### Git 推送失败
 
 **可能原因**:
-- Git 仓库未初始化
-- 远程仓库配置错误
+- `config.yaml` 中 `git.repo_path` 路径不存在或不是 Git 仓库
+- Git 远程仓库凭据未配置
 - 网络连接问题
 
 **解决方案**:
-- 确保 `git repo_path` 指向有效的 Git 仓库
-- 检查 `git branch` 配置是否正确
-- 验证网络连接和 Git 凭据
+- 确保 `repo_path` 指向有效的 Git 仓库（包含 `.git` 目录）
+- 运行 `git push` 手动测试凭据和网络
+- 检查 `github.username` 和 `github.repo_name` 是否正确
 
-### 诊断工具
+### WSL 环境中无法使用
 
-运行诊断脚本检查环境：
-```bash
-python diagnose.py
-```
+**原因**: WSL 中无法调用 Windows 全局热键 API
 
-诊断内容包括：
-- 运行环境检测（WSL/Windows）
-- 依赖库检查
-- PyQt6 GUI 功能检测（如果使用）
-- 键盘热键功能检测
-- 截图功能检测
-- 配置文件验证
+**解决方案**:
+- 直接在 Windows 中运行 exe，不要在 WSL 终端中启动
 
 ## 开发
 
@@ -237,21 +269,26 @@ mypy src/
 ### 打包可执行文件
 
 ```bash
-pyinstaller build.spec
+# 确保 pystray 已安装（托盘图标依赖）
+pip install pystray
+
+# 打包
+pyinstaller build.spec --noconfirm
 ```
 
-打包后的可执行文件位于 `dist/` 目录。
+打包产物：
+- `dist/MaHaLuDa.exe` — 单文件版（较大，启动稍慢）
+- `dist/MaHaLuDa/MaHaLuDa.exe` — 文件夹版（推荐，启动快）
 
 ## 技术栈
 
 - **Python 3.10+**
-- **keyboard**: 全局热键监听
-- **Pillow**: 图像处理
-- **pystray**: 系统托盘图标
-- **pyperclip**: 剪贴板操作
-- **PyYAML**: 配置管理
-- **loguru**: 日志系统
-- **mss**: 截图功能（核心模块依赖）
+- **keyboard** — 全局热键监听
+- **Pillow** — 图像处理和剪贴板截图获取
+- **pystray** — 系统托盘图标
+- **pyperclip** — 剪贴板复制
+- **PyYAML** — 配置文件解析
+- **loguru** — 结构化日志
 
 ## 许可证
 
@@ -263,7 +300,18 @@ MIT License
 
 ## 更新日志
 
-### v2.0.0 (当前版本)
+### v2.1.0 (当前版本)
+- 修复 Git 命令注入风险（commit_message 添加 `--` 终止符）
+- 修复热键状态管理（unregister 异常后状态不一致）
+- 添加路径穿越防护（target_folder 安全检查）
+- 添加 HTML 转义（防止 XSS）
+- 修复 PIL Image 资源泄漏
+- 添加热键防抖（0.5秒间隔）
+- 改进剪贴板轮询错误提示
+- 使用 argparse 支持 `--help` 参数
+- 优化配置加载（仅在补全时回写）
+
+### v2.0.0
 - 重构为无GUI版本（Headless）
 - 移除 PyQt6 依赖
 - 使用系统截图工具（Win+Shift+S）

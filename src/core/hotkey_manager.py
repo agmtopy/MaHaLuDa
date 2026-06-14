@@ -1,4 +1,5 @@
 ﻿"""全局热键管理模块 (Headless 版本)。"""
+import time
 import threading
 from typing import Callable, Optional
 import keyboard
@@ -9,6 +10,8 @@ from src.core.config_manager import HotkeyConfig
 
 class HotkeyManager:
     """全局热键管理器"""
+
+    DEBOUNCE_INTERVAL_S = 0.5
 
     def __init__(self, config: HotkeyConfig, callback: Optional[Callable[[], None]] = None):
         """
@@ -22,6 +25,7 @@ class HotkeyManager:
         self.hotkey = config.key
         self.callback = callback
         self.is_registered = False
+        self._last_triggered = 0.0
 
     def set_callback(self, callback: Callable[[], None]) -> None:
         """设置回调函数"""
@@ -39,9 +43,8 @@ class HotkeyManager:
 
         try:
             if hasattr(keyboard, 'is_hotkey_registered') and keyboard.is_hotkey_registered(self.hotkey):
-                logger.warning(f"热键已存在，跳过重复注册: {self.hotkey}")
-                self.is_registered = True
-                return True
+                logger.warning(f"热键已被其他程序注册: {self.hotkey}")
+                return False
 
             keyboard.add_hotkey(self.hotkey, self._on_hotkey_pressed)
             self.is_registered = True
@@ -65,6 +68,7 @@ class HotkeyManager:
 
         except Exception as e:
             logger.error(f"注销热键失败: {e}")
+            self.is_registered = False
 
     def start(self) -> bool:
         """兼容旧接口：启动热键监听。"""
@@ -79,11 +83,15 @@ class HotkeyManager:
         self.unregister()
         self.config = new_config
         self.hotkey = new_config.key
-        self.config.enabled = new_config.enabled
         return self.register()
 
     def _on_hotkey_pressed(self) -> None:
         """热键触发回调"""
+        now = time.time()
+        if now - self._last_triggered < self.DEBOUNCE_INTERVAL_S:
+            logger.debug(f"热键防抖：忽略过快触发")
+            return
+        self._last_triggered = now
         logger.debug(f"热键触发: {self.hotkey}")
         if self.callback:
             threading.Thread(target=self._execute_callback, daemon=True).start()
@@ -101,7 +109,10 @@ class HotkeyManager:
         """检查热键是否可用"""
         try:
             keyboard.add_hotkey(hotkey, lambda: None)
-            keyboard.remove_hotkey(hotkey)
+            try:
+                keyboard.remove_hotkey(hotkey)
+            except Exception:
+                pass
             return True
         except Exception:
             return False

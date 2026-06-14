@@ -17,7 +17,7 @@ def ensure_dir(dir_path: Path) -> bool:
     try:
         dir_path.mkdir(parents=True, exist_ok=True)
         return True
-    except Exception as e:
+    except OSError as e:
         logger.error(f"创建目录失败 {dir_path}: {e}")
         return False
 
@@ -34,7 +34,7 @@ def get_file_size(file_path: Path) -> Optional[int]:
     """
     try:
         return file_path.stat().st_size
-    except Exception as e:
+    except OSError as e:
         logger.error(f"获取文件大小失败 {file_path}: {e}")
         return None
 
@@ -49,6 +49,8 @@ def format_file_size(size_bytes: int) -> str:
     Returns:
         str: 格式化后的字符串
     """
+    if size_bytes < 0:
+        return "0 B"
     for unit in ['B', 'KB', 'MB', 'GB']:
         if abs(size_bytes) < 1024.0:
             return f"{size_bytes:.2f} {unit}"
@@ -71,7 +73,7 @@ def safe_delete(file_path: Path) -> bool:
             file_path.unlink()
             logger.debug(f"已删除文件: {file_path}")
         return True
-    except Exception as e:
+    except OSError as e:
         logger.error(f"删除文件失败 {file_path}: {e}")
         return False
 
@@ -94,6 +96,6 @@ def copy_file(src: Path, dst: Path) -> bool:
         shutil.copy2(src, dst)
         logger.debug(f"已复制文件: {src} -> {dst}")
         return True
-    except Exception as e:
+    except OSError as e:
         logger.error(f"复制文件失败 {src} -> {dst}: {e}")
         return False

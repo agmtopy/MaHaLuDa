@@ -18,6 +18,16 @@ class GitOperations:
             repo_path: Git仓库路径
         """
         self.repo_path = Path(repo_path)
+        self._branch_cache: Optional[str] = None
+
+    def _get_current_branch_cached(self) -> str:
+        """获取当前分支名（带缓存）"""
+        if self._branch_cache is None:
+            result = self.get_current_branch()
+            if result is None:
+                raise RuntimeError("无法获取当前分支名")
+            self._branch_cache = result
+        return self._branch_cache
 
     def _cleanup_stale_index_lock(self) -> bool:
         """
@@ -165,11 +175,12 @@ class GitOperations:
 
             # Git add
             logger.info(f"添加文件到Git: {rel_path}")
-            self._run_git_command(['add', str(rel_path)], check=True)
+            self._run_git_command(['add', '--', str(rel_path)], check=True)
 
             # Git commit
             logger.info(f"提交更改: {commit_message}")
             self._run_git_command(['commit', '-m', commit_message], check=True)
+            self._branch_cache = None
 
             return True
 
@@ -194,8 +205,7 @@ class GitOperations:
         try:
             # 获取当前分支
             if branch is None:
-                result = self._run_git_command(['rev-parse', '--abbrev-ref', 'HEAD'], check=True)
-                branch = result.stdout.strip()
+                branch = self._get_current_branch_cached()
 
             logger.info(f"推送到远程仓库: {remote}/{branch}")
             self._run_git_command(['push', remote, branch], check=True)
@@ -223,8 +233,7 @@ class GitOperations:
         try:
             # 获取当前分支
             if branch is None:
-                result = self._run_git_command(['rev-parse', '--abbrev-ref', 'HEAD'], check=True)
-                branch = result.stdout.strip()
+                branch = self._get_current_branch_cached()
 
             logger.info(f"从远程仓库拉取: {remote}/{branch}")
             self._run_git_command(['pull', remote, branch], check=True)
@@ -258,8 +267,7 @@ class GitOperations:
             }
 
             # 获取当前分支
-            result = self._run_git_command(['rev-parse', '--abbrev-ref', 'HEAD'], check=True)
-            status['branch'] = result.stdout.strip()
+            status['branch'] = self._get_current_branch_cached()
 
             # 获取状态
             result = self._run_git_command(['status', '--porcelain'], check=True)

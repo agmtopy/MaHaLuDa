@@ -1,4 +1,5 @@
 """文件名生成工具"""
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -61,10 +62,17 @@ def get_full_path(repo_path: Path | str, target_folder: str, filename: str) -> P
     repo_path = Path(repo_path)
 
     # 构建目标文件夹路径
-    # 注意：如果 target_folder 以 "/" 或 "\\" 开头，Path 会把它当成“绝对路径”，从而丢弃 repo_path。
-    # 这会导致文件被保存到盘符根目录（例如 E:\\png\\...），并触发后续 Git 提交“文件不在仓库中”。
+    # 注意：如果 target_folder 以 "/" 或 "\\" 开头，Path 会把它当成"绝对路径"，从而丢弃 repo_path。
+    # 这会导致文件被保存到盘符根目录（例如 E:\\png\\...），并触发后续 Git 提交"文件不在仓库中"。
     safe_target_folder = (target_folder or "").lstrip("/\\")
+    # 防止路径穿越
+    if ".." in Path(safe_target_folder).parts:
+        raise ValueError(f"target_folder 包含路径穿越: {target_folder}")
     folder_path = repo_path / safe_target_folder
+    # 最终检查：解析后的路径必须在 repo 内
+    resolved = folder_path.resolve()
+    if not resolved.is_relative_to(repo_path.resolve()):
+        raise ValueError(f"解析后的路径逃逸出仓库目录: {resolved}")
 
     # 构建完整文件路径
     file_path = folder_path / filename
@@ -74,37 +82,18 @@ def get_full_path(repo_path: Path | str, target_folder: str, filename: str) -> P
 
 
 def ensure_unique_filename(file_path: Path) -> Path:
-    """
-    确保文件名唯一，如果文件已存在则添加序号
-
-    Args:
-        file_path: 原始文件路径
-
-    Returns:
-        Path: 唯一的文件路径
-    """
     if not file_path.exists():
         return file_path
 
-    # 分解文件名和扩展名
     stem = file_path.stem
     suffix = file_path.suffix
     parent = file_path.parent
 
-    # 尝试添加序号
-    counter = 1
-    while True:
-        new_filename = f"{stem}_{counter:03d}{suffix}"
-        new_path = parent / new_filename
-
+    for counter in range(1, 101):
+        new_path = parent / f"{stem}_{counter:03d}{suffix}"
         if not new_path.exists():
-            logger.debug(f"文件名冲突，使用新文件名: {new_filename}")
             return new_path
 
-        counter += 1
-
-        # 防止无限循环
-        if counter > 9999:
-            logger.warning(f"无法生成唯一文件名，使用时间戳: {file_path}")
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            return parent / f"{stem}_{timestamp}{suffix}"
+    # 兜底：使用 UUID 避免碰撞
+    unique_id = uuid.uuid4().hex[:8]
+    return parent / f"{stem}_{unique_id}{suffix}"

@@ -1,4 +1,5 @@
 """GitHub链接生成模块"""
+import html as html_mod
 import urllib.parse
 from typing import Optional
 from loguru import logger
@@ -39,6 +40,9 @@ class LinkGenerator:
             >>> generator.generate_raw_url("images/test.png", "main")
             'https://raw.githubusercontent.com/user/repo/main/images/test.png'
         """
+        if not self.username or not self.repo_name:
+            raise ValueError("GitHub 用户名和仓库名不能为空")
+
         # URL编码处理特殊字符
         encoded_path = urllib.parse.quote(file_path, safe="/")
 
@@ -64,6 +68,9 @@ class LinkGenerator:
             >>> generator.generate_github_url("images/test.png", "main")
             'https://github.com/user/repo/blob/main/images/test.png'
         """
+        if not self.username or not self.repo_name:
+            raise ValueError("GitHub 用户名和仓库名不能为空")
+
         encoded_path = urllib.parse.quote(file_path, safe="/")
 
         url = f"{self.BASE_GITHUB_URL}/{self.username}/{self.repo_name}/blob/{branch}/{encoded_path}"
@@ -105,6 +112,8 @@ class LinkGenerator:
             >>> generator.generate_html_link("https://example.com/image.png", "screenshot")
             '<img src="https://example.com/image.png" alt="screenshot">'
         """
-        html = f'<img src="{url}" alt="{alt_text}">'
+        escaped_alt = html_mod.escape(alt_text, quote=True)
+        escaped_url = html_mod.escape(url, quote=True)
+        html = f'<img src="{escaped_url}" alt="{escaped_alt}">'
         logger.debug(f"生成HTML链接: {html}")
         return html

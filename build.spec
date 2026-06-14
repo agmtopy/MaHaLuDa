@@ -29,6 +29,7 @@ a = Analysis(
         'pyperclip',
         'yaml',
         'loguru',
+        'pystray',
 
         # 项目模块
         'src.core.config_manager',
@@ -40,6 +41,7 @@ a = Analysis(
         'src.utils.clipboard',
         'src.utils.file_utils',
         'src.utils.naming',
+        'src.utils.dialogs',
     ],
     hookspath=[],
     hooksconfig={},
@@ -75,7 +77,7 @@ exe = EXE(
     upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,  # 无GUI版需要控制台输出/报错信息
+    console=False,  # GUI 子系统：无控制台窗口，托盘图标独立运行
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

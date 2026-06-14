@@ -13,26 +13,28 @@ class ScreenshotCapture:
     def __init__(self):
         """初始化截图捕获器"""
         self.sct: Optional[MSSBase] = None
+        self._context = None
 
     def __enter__(self):
         """上下文管理器入口"""
-        context = mss.mss()
-        self.sct = context.__enter__() if hasattr(context, '__enter__') else context
+        self._context = mss.mss()
+        self.sct = self._context.__enter__()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """上下文管理器退出"""
-        if self.sct and hasattr(self.sct, '__exit__'):
-            try:
-                self.sct.__exit__(exc_type, exc_val, exc_tb)
-            except Exception:
-                pass
-        elif self.sct:
-            try:
-                self.sct.close()
-            except Exception:
-                pass
+        if self._context:
+            self._context.__exit__(exc_type, exc_val, exc_tb)
+            self._context = None
+        self.sct = None
         return False
+
+    def close(self):
+        """释放资源"""
+        if self._context:
+            self._context.__exit__(None, None, None)
+            self._context = None
+        self.sct = None
 
     def get_monitors_info(self) -> list[dict]:
         """
@@ -47,7 +49,8 @@ class ScreenshotCapture:
                 - height: 高度
         """
         if not self.sct:
-            self.sct = mss.mss()
+            self._context = mss.mss()
+            self.sct = self._context.__enter__()
 
         monitors = []
         for i, monitor in enumerate(self.sct.monitors):
@@ -74,7 +77,8 @@ class ScreenshotCapture:
         """
         try:
             if not self.sct:
-                self.sct = mss.mss()
+                self._context = mss.mss()
+                self.sct = self._context.__enter__()
 
             # 获取显示器信息
             monitors = self.sct.monitors
@@ -108,7 +112,8 @@ class ScreenshotCapture:
         """
         try:
             if not self.sct:
-                self.sct = mss.mss()
+                self._context = mss.mss()
+                self.sct = self._context.__enter__()
 
             left, top, right, bottom = region
             width = right - left

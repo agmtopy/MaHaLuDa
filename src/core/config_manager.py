@@ -217,9 +217,12 @@ class Config:
                 config = cls.from_dict(merged)
                 is_valid, _ = config.validate()
                 if is_valid:
-                    logger.info(f"已加载配置文件: {config_path} (已使用模板补全: {template_path})")
-                    # 将补全后的配置写回本地，方便后续直接读取
-                    config.save(config_path)
+                    # 只在配置确实被模板补全后才回写
+                    if merged != data:
+                        config.save(config_path)
+                        logger.info(f"已使用模板补全配置并保存: {config_path}")
+                    else:
+                        logger.info(f"已加载配置文件: {config_path}")
                     return config
 
             config = cls.from_dict(data)
@@ -396,6 +399,12 @@ class Config:
                 retention=logging_data.get('retention', '7 days'),
             )
 
+        # 警告未知配置字段
+        known_keys = {'hotkey', 'git', 'github', 'naming', 'image', 'ui', 'logging'}
+        unknown_keys = set(data.keys()) - known_keys
+        if unknown_keys:
+            logger.warning(f"配置文件中存在未知字段（可能拼写错误）: {', '.join(sorted(unknown_keys))}")
+
         return config
 
     def validate(self) -> tuple[bool, list[str]]:
@@ -429,7 +438,12 @@ class Config:
         if self.naming.format:
             try:
                 from datetime import datetime
-                datetime.now().strftime(self.naming.format)
+                test_result = datetime.now().strftime(self.naming.format)
+                # 检查文件名非法字符
+                illegal_chars = set('/\\:*?"<>|')
+                found = illegal_chars & set(test_result)
+                if found:
+                    errors.append(f"naming.format 生成的文件名包含非法字符: {''.join(found)}")
             except Exception as e:
                 errors.append(f"时间戳格式无效: {e}")
 

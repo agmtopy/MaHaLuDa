@@ -17,8 +17,9 @@ def copy_to_clipboard(text: str) -> bool:
         pyperclip.copy(text)
         logger.debug(f"已复制到剪贴板: {text[:50]}...")
         return True
+    # pyperclip may raise various platform-specific exceptions (not just OSError)
     except Exception as e:
-        logger.error(f"复制到剪贴板失败: {e}")
+        logger.warning(f"复制到剪贴板失败 (非关键操作): {e}")
         return False
 
 
@@ -32,6 +33,7 @@ def get_from_clipboard() -> str:
     try:
         text = pyperclip.paste()
         return text
+    # pyperclip may raise various platform-specific exceptions (not just OSError)
     except Exception as e:
-        logger.error(f"从剪贴板获取失败: {e}")
+        logger.warning(f"从剪贴板获取失败 (非关键操作): {e}")
         return ""
